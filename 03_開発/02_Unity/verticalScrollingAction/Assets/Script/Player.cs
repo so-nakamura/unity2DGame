@@ -9,6 +9,7 @@ public class Player : MonoBehaviour
     [Header("ジャンプ速度")] public float jumpSpeed;
     [Header("ジャンプする高さ")] public float jumpHeight;
     [Header("ジャンプ制限時間")] public float jumpLimitTime;
+    [Header("踏みつけ判定の高さの割合")] public float stepOnRate;
     [Header("重力")] public float gravity;
     [Header("接地判定")] public GroundCheck ground;
     [Header("頭をぶつけた判定")] public GroundCheck head;
@@ -19,14 +20,18 @@ public class Player : MonoBehaviour
     #region//プライベート変数
     private Animator anim = null;
     private Rigidbody2D rb = null;
+    private CapsuleCollider2D capcol = null;
     private bool isGround = false;
     private bool isHead = false;
     private bool isJump = false;
     private bool isRun = false;
+    private bool isDown = false;
+    private bool isOtherJump = false;
     private float jumpPos = 0.0f;
-    private float jumpTime = 0.0f;
-    private float dashTime = 0.0f;
-    private float beforeKey = 0.0f;
+    private float otherJumpHeight = 0.0f;
+    private float dashTime, jumpTime;
+    private float beforeKey;
+    private string enemyTag = "Enemy";
     #endregion
 
     void Start()
@@ -35,11 +40,14 @@ public class Player : MonoBehaviour
         anim = GetComponent<Animator>();
         //Rigidbody2Dコンポーネントのインスタンスを取得
         rb = GetComponent<Rigidbody2D>();
+        //CapsuleCollider2Dコンポーネントのインスタンスを取得
+        capcol = GetComponent<CapsuleCollider2D>();
 
     }
 
     void FixedUpdate()
     {
+        if (!isDown) {
         //接地判定を取得
         isGround = ground.IsGround();
         isHead = head.IsGround();
@@ -53,6 +61,12 @@ public class Player : MonoBehaviour
         
         //移動速度を設定
         rb.velocity = new Vector2(xSpeed, ySpeed);
+        }
+        else
+        {
+            //ダウン中は重力のみ適用
+            rb.velocity = new Vector2(0, -gravity);
+        }
     }
 
     /// <summary>
@@ -64,8 +78,33 @@ public class Player : MonoBehaviour
         float verticalKey = Input.GetAxis("Vertical");
         float ySpeed = -gravity;
 
+        //地面から離れている場合（ジャンプ中）
+        if (isOtherJump)
+        {
+            //現在の高さが飛べる高さより下か
+            bool canHeight = jumpPos + otherJumpHeight > transform.position.y;
+            //ジャンプする時間が長くなりすぎてないか
+            bool canTime = jumpLimitTime > jumpTime;
+
+            //上方向キーを押している　かつ　飛べる高さより下にいる　かつ　ジャンプ時間がオーバーしてない　かつ　頭をぶつけていない
+            if (canHeight && canTime && !isHead)
+            {
+                //上昇する
+                ySpeed = jumpSpeed;
+                //上昇している間に進んだゲーム内時間を毎回足す
+                jumpTime += Time.deltaTime;
+            }
+            //入力がない場合
+            else
+            {
+                //下降する
+                isOtherJump = false;
+                jumpTime = 0.0f;
+            }
+        }
+
         //地面についている場合
-        if (isGround)
+        else if (isGround)
         {
             //上方向キーが押されている場合
             if (verticalKey > 0)
@@ -81,7 +120,7 @@ public class Player : MonoBehaviour
                 isJump = false;
             }
         }
-        //地面から離れている場合
+        //地面から離れている場合（ジャンプ中）
         else if (isJump)
         {
             //上方向キーを押しているか
@@ -109,7 +148,7 @@ public class Player : MonoBehaviour
         }
 
         //アニメーションカーブを速度に適用
-        if (isJump)
+        if (isJump || isOtherJump)
         {
             ySpeed *= jumpCurve.Evaluate(dashTime);
         }
@@ -179,8 +218,51 @@ public class Player : MonoBehaviour
     /// </summary>
     private void SetAnimation()
     {
-        anim.SetBool("jump", isJump);
+        anim.SetBool("jump", isJump || isOtherJump);
         anim.SetBool("ground", isGround);
         anim.SetBool("run", isRun);
     }
+
+    #region//接触判定
+    private void OnCollisionEnter2D(Collision2D collision)
+    {
+        if(collision.collider.tag == enemyTag)
+        {
+            //踏みつけ判定になる高さ
+            float stepOnHeight = (capcol.size.y * (stepOnRate / 100f));
+
+            //踏みつけ判定のワールド座標
+            float judgePos = transform.position.y - (capcol.size.y / 2f) + stepOnHeight;
+
+            foreach (ContactPoint2D p in collision.contacts)
+            {                
+                if (p.point.y < judgePos)
+                {
+                    //もう一度跳ねる
+                    ObjectCollision o = collision.gameObject.GetComponent<ObjectCollision>();
+                    if(o != null)
+                    {
+                        otherJumpHeight = o.boundHeight; //踏んづけたものから跳ねる高さを取得する
+                        o.playerStepOn = true; //踏んづけたものに対して踏んづけた事を通知する
+                        jumpPos = transform.position.y; //ジャンプした位置を記録する
+                        isOtherJump = true;
+                        isJump = false;
+                        jumpTime = 0.0f;
+                    }
+                    else
+                    {
+                        Debug.Log("ObjectCollisionが付いてないよ！");
+                    }
+                }
+                else
+                {
+                    //ダウンする
+                    anim.Play("player_down");
+                    isDown = true;
+                    break;
+                }
+            }            
+        }
+    }
+    #endregion
 }
