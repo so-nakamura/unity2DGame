@@ -21,6 +21,7 @@ public class Player : MonoBehaviour
     private Animator anim = null;
     private Rigidbody2D rb = null;
     private CapsuleCollider2D capcol = null;
+    private MoveObject moveObj = null;
     private bool isGround = false; //接地判定（足元）
     private bool isHead = false; //接地判定（頭上）
     private bool isJump = false; //ジャンプ判定
@@ -32,6 +33,7 @@ public class Player : MonoBehaviour
     private float dashTime, jumpTime; 
     private float beforeKey; //前回の入力値
     private string enemyTag = "Enemy"; //タグ名
+    private string moveFloorTag = "moveFloor";
     #endregion
 
     void Start()
@@ -48,19 +50,27 @@ public class Player : MonoBehaviour
     void FixedUpdate()
     {
         if (!isDown) {
-        //接地判定を取得
-        isGround = ground.IsGround();
-        isHead = head.IsGround();
+            //接地判定を取得
+            isGround = ground.IsGround();
+            isHead = head.IsGround();
 
-        //各種座標軸の速度を求める
-        float ySpeed = GetYSpeed();
-        float xSpeed = GetXSpeed();
+            //各種座標軸の速度を求める
+            float ySpeed = GetYSpeed();
+            float xSpeed = GetXSpeed();
 
-        //アニメーションを適用
-        SetAnimation();
-        
-        //移動速度を設定
-        rb.velocity = new Vector2(xSpeed, ySpeed);
+            //アニメーションを適用
+            SetAnimation();
+
+            //移動速度を設定
+            Vector2 addVelocity = Vector2.zero;
+            //動く床のスクリプトを取得している時
+            if(moveObj != null)
+            {
+                //動く床から速度を取得
+                addVelocity = moveObj.GetVelocity();
+            }
+            //プレイヤーの速度に動く床の速度を足す
+            rb.velocity = new Vector2(xSpeed, ySpeed) + addVelocity;
         }
         else
         {
@@ -223,9 +233,53 @@ public class Player : MonoBehaviour
         anim.SetBool("run", isRun);
     }
 
-    #region//接触判定
-    private void OnCollisionEnter2D(Collision2D collision)
+    /// <summary>
+    /// コンティニュー待機状態か
+    /// </summary>
+    /// <returns></returns>
+    public bool IsContinueWaiting()
     {
+        //ダウンアニメーションが完了しているかを返す
+        return IsDownAnimEnd();
+    }
+
+    //ダウンアニメーションが完了しているかどうか
+    private bool IsDownAnimEnd()
+    {
+        //やられているか　＆＆　アニメーターを取得できているか
+        if (isDown && anim != null)
+        {
+            AnimatorStateInfo currentState = anim.GetCurrentAnimatorStateInfo(0);
+            if (currentState.IsName("player_down"))
+            {
+                if (currentState.normalizedTime >= 1)
+                {
+                    return true;
+                }
+            }
+        }
+        //ダウンアニメーションが完了していないとき
+        return false;
+    }
+
+    /// <summary>
+    /// コンティニューする
+    /// （敵にやられてダウンしたあと復帰する）
+    /// </summary>
+    public void ContinuePlayer()
+    {
+        isDown = false;
+        anim.Play("player_stand");
+        isJump = false;
+        isOtherJump = false;
+        isRun = false;
+    }
+
+
+//接触判定
+private void OnCollisionEnter2D(Collision2D collision)
+    {
+        //敵を踏んだ時
         if(collision.collider.tag == enemyTag)
         {
             //踏みつけ判定になる高さ
@@ -261,8 +315,39 @@ public class Player : MonoBehaviour
                     isDown = true;
                     break;
                 }
-            }            
+            }
+        }
+        //動く床を踏んだ時
+        else if (collision.collider.tag == moveFloorTag)
+        {
+            //踏みつけ判定になる高さ
+            float stepOnHeight = (capcol.size.y * (stepOnRate / 100f));
+
+            //踏みつけ判定のワールド座標
+            float judgePos = transform.position.y - (capcol.size.y / 2f) + stepOnHeight;
+
+            foreach (ContactPoint2D p in collision.contacts)
+            {
+                //動く床に乗っている
+                if (p.point.y < judgePos)
+                {
+                    //動く床のスクリプトを取得
+                    moveObj = collision.gameObject.GetComponent<MoveObject>();
+                }
+            }
         }
     }
-    #endregion
+
+    /// <summary>
+    /// 動く床が離れたら取得したスクリプトを離す
+    /// </summary>
+    private void OnCollisionExit2D(Collision2D collision)
+    {
+        if(collision.collider.tag == moveFloorTag)
+        {
+            //動く床から離れた
+            moveObj = null;
+        }
+    }
+
 }
