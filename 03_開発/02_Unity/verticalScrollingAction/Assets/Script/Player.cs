@@ -21,17 +21,17 @@ public class Player : MonoBehaviour
     private Animator anim = null;
     private Rigidbody2D rb = null;
     private CapsuleCollider2D capcol = null;
-    private bool isGround = false;
-    private bool isHead = false;
-    private bool isJump = false;
-    private bool isRun = false;
-    private bool isDown = false;
-    private bool isOtherJump = false;
-    private float jumpPos = 0.0f;
-    private float otherJumpHeight = 0.0f;
-    private float dashTime, jumpTime;
-    private float beforeKey;
-    private string enemyTag = "Enemy";
+    private bool isGround = false; //接地判定（足元）
+    private bool isHead = false; //接地判定（頭上）
+    private bool isJump = false; //ジャンプ判定
+    private bool isRun = false; //走行判定
+    private bool isDown = false; //ダウン判定
+    private bool isOtherJump = false; 
+    private float jumpPos = 0.0f; //ジャンプした位置
+    private float otherJumpHeight = 0.0f; //踏んづけたものから跳ねる高さ
+    private float dashTime, jumpTime; 
+    private float beforeKey; //前回の入力値
+    private string enemyTag = "Enemy"; //タグ名
     #endregion
 
     void Start()
